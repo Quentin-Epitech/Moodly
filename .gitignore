@@ -1,0 +1,30 @@
+# Dépendances
+node_modules/
+
+# Environnement (seuls les .env.example sont versionnés)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# SQLite
+*.db
+*.db-journal
+
+# Build
+dist/
+coverage/
+
+# Expo
+.expo/
+web-build/
+expo-env.d.ts
+*.tsbuildinfo
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Sauvegardes locales de la base
+backups/
