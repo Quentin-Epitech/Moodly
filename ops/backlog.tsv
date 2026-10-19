@@ -1,0 +1,21 @@
+# périmètre	priorité	titre	description (lu par ops/github-setup.sh)
+A	P1	Documentation interactive de l'API (OpenAPI)	Générer un schéma OpenAPI à partir des schémas zod existants et le servir en développement (Swagger UI ou Scalar). Chaque route de backend/API.md doit y figurer, avec ses rôles autorisés.
+A	P2	Limiteur de connexion partagé (Redis)	Brancher express-rate-limit sur un stockage partagé (Redis) pour pouvoir lancer plusieurs instances de l'API. Le verrouillage par compte, lui, est déjà en base.
+A	P2	Journal d'audit de la CLI des comptes	Tracer qui a créé, réinitialisé, modifié ou supprimé quel compte, et quand (sans mot de passe ni donnée d'humeur). Commande users audit pour le consulter.
+B	P1	Preuve d'anonymat pour le jury	ANONYMAT.md : attaques envisagées (recoupement de deux jours, heure de réponse, raison citée par une seule personne, petite équipe), nos parades, ce qui reste possible. Script ops/prouver-anonymat.sh qui affiche en direct les tables Submission et MoodEntry pour montrer qu'aucun lien n'existe.
+B	P1	Tests unitaires des fonctions pures de statistiques	Tester directement aggregateDay, computeAlert et computeSummary : bornes du seuil, égalités dans le tri des raisons, seuils exacts 2,8 / 3,2 / 0,4 / 0,8, formulation « le moral remonte ».
+B	P2	Agrégation en base (groupBy Prisma)	Remplacer le calcul en JavaScript par des groupBy Prisma portables SQLite / Postgres, et mesurer le gain sur 50 000 réponses (script dans backend/scripts/).
+B	P2	Test de propriété avec fast-check	Pour des jeux de réponses aléatoires : aucun jour masqué ne laisse fuir de moyenne ni de raison, aucune raison citée une seule fois n'apparaît sur un jour.
+B	P2	Seuil adapté à la taille de l'équipe	Pour une équipe de 3 personnes, un seuil de 3 révèle que tout le monde a répondu : étudier un seuil relatif, par exemple max(3, 40 % de l'équipe), et le tester.
+C	P1	Test sur vrais téléphones (iOS et Android)	Via Expo Go : clavier qui masque les champs, zones sûres, polices, retour arrière Android, partage du fichier d'agenda. Corriger et noter les appareils testés dans la PR.
+C	P1	Écran de mot de passe	Indicateur de robustesse, bouton pour afficher le mot de passe, tests du parcours « mot de passe provisoire » sur mobile.
+C	P2	Saisie hors ligne	Si le réseau tombe à l'envoi, garder la réponse sur le téléphone et l'envoyer au retour du réseau, une seule fois (un 409 au renvoi veut dire : déjà enregistrée).
+C	P2	Accessibilité de la saisie	Libellés VoiceOver / TalkBack sur toute la saisie et le bilan, tailles de texte dynamiques, cibles tactiles de 44 px minimum.
+D	P1	Comparaison avec la période précédente sur la courbe	Tracer la période précédente en pointillé sous la courbe actuelle (deuxième série gifted-charts), avec une légende.
+D	P1	Graphe accessible	Sur web, flèches gauche / droite pour changer de jour ; partout, un résumé lu par les lecteurs d'écran (« moyenne 2,4, en baisse de 1,3 sur 7 jours »).
+D	P1	Recherche et tri des demandes reçues	Dans la liste du manager et des RH : recherche par objet, tri par ancienneté et par non lues.
+D	P2	Export CSV pour la direction	Agrégats uniquement (équipe, jour, moyenne ou « masqué », nombre de réponses). Téléchargement sur web, partage sur mobile. Test : aucune donnée individuelle dans l'export.
+D	P2	États de chargement et vides	Squelettes à la place de l'indicateur de chargement, message dédié quand une équipe n'a encore aucune réponse.
+E	P1	Restauration de sauvegarde testée	Jouer pour de vrai la restauration d'une sauvegarde (ops/backup.sh, procédure de PRODUCTION.md) et l'automatiser dans ops/restore.sh, avec une vérification de l'API après coup.
+E	P2	Postgres local dans Docker	Un service db Postgres 17 optionnel dans docker-compose.yml (profil postgres), pour travailler en local sur la variante Postgres sans Supabase.
+E	P2	Supervision de /api/ready	Sonde de disponibilité et alerte (Uptime Kuma dans le compose de production), documentée dans PRODUCTION.md.

@@ -1,0 +1,55 @@
+# Stack locale / démo : API + app web. L'app mobile (Expo Go) ne tourne pas dans Docker.
+# Pour la production, voir docker-compose.prod.yml et PRODUCTION.md.
+#
+#   cp backend/.env.example backend/.env         # une fois
+#   docker compose up --build -d                 # web : http://localhost:8080 · api : http://localhost:4000
+#   ./ops/demo-reset.sh                          # données de démo calées sur aujourd'hui
+#   docker compose logs -f api
+#
+# Ports hôte modifiables : API_PORT=5000 WEB_PORT=3000 docker compose up
+# L'app web appelle l'API via /api (relais nginx, même origine). Le port 4000 reste
+# ouvert pour les apps mobiles en développement (Expo Go sur le même Wi-Fi).
+
+services:
+  api:
+    build: ./backend
+    ports:
+      - "${API_PORT:-4000}:4000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Stack locale : pas les garde-fous de production (secret de dev, CORS ouvert, seed autorisé)
+      NODE_ENV: development
+      # Surcharge du .env : dans le conteneur, la base SQLite vit sur le volume /data
+      DATABASE_URL: file:/data/moodly.db
+      PORT: 4000
+      # Requêtes de l'app web relayées par nginx
+      TRUST_PROXY: 1
+      # Démo et tests de bout en bout : beaucoup de connexions depuis la même machine
+      LOGIN_RATE_LIMIT: 500
+    volumes:
+      - moodly-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.web
+      args:
+        EXPO_PUBLIC_API_URL: ${WEB_API_URL:-/api}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  # Les données survivent aux redémarrages et aux rebuilds de l'image
+  moodly-data:
