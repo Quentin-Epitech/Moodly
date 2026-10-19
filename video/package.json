@@ -1,0 +1,33 @@
+{
+  "name": "moodly-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vidéo de présentation de Moodly (Remotion + three.js), écrans capturés dans la vraie app",
+  "scripts": {
+    "capture": "node scripts/capture.mjs",
+    "studio": "remotion studio",
+    "render:16x9": "remotion render Moodly16x9 out/moodly-16x9-4k.mp4 --scale=2 && remotion ffmpeg -y -loglevel error -i out/moodly-16x9-4k.mp4 -vf scale=1920:1080:flags=lanczos -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -movflags +faststart out/moodly-16x9.mp4",
+    "render:9x16": "remotion render Moodly9x16 out/moodly-9x16-4k.mp4 --scale=2 && remotion ffmpeg -y -loglevel error -i out/moodly-9x16-4k.mp4 -vf scale=1080:1920:flags=lanczos -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -movflags +faststart out/moodly-9x16.mp4",
+    "render:30s:16x9": "remotion render Moodly30s16x9 out/moodly-30s-16x9-4k.mp4 --scale=2 && remotion ffmpeg -y -loglevel error -i out/moodly-30s-16x9-4k.mp4 -vf scale=1920:1080:flags=lanczos -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -movflags +faststart out/moodly-30s-16x9.mp4",
+    "render:30s:9x16": "remotion render Moodly30s9x16 out/moodly-30s-9x16-4k.mp4 --scale=2 && remotion ffmpeg -y -loglevel error -i out/moodly-30s-9x16-4k.mp4 -vf scale=1080:1920:flags=lanczos -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -movflags +faststart out/moodly-30s-9x16.mp4",
+    "render:30s": "npm run render:30s:16x9 && npm run render:30s:9x16",
+    "render": "npm run render:16x9 && npm run render:9x16",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "@remotion/cli": "^4.0.536",
+    "@remotion/fonts": "^4.0.536",
+    "@remotion/three": "^4.0.536",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.536",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "playwright": "^1.64.0",
+    "typescript": "5.9"
+  }
+}
