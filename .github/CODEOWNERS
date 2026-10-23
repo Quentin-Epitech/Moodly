@@ -1,0 +1,43 @@
+# Revue automatique par périmètre (voir EQUIPE.md). Remplacer chaque @PSEUDO_x par le pseudo GitHub du
+# responsable : GitHub demandera alors sa revue sur toute PR qui touche ses fichiers.
+
+# A — API, auth & sécurité
+/backend/src/routes/          @PSEUDO_A
+/backend/src/controllers/     @PSEUDO_A
+/backend/src/middlewares/     @PSEUDO_A
+/backend/src/services/authService.ts      @PSEUDO_A
+/backend/src/services/accountService.ts   @PSEUDO_A
+/backend/src/services/meetingService.ts   @PSEUDO_A
+/backend/API.md               @PSEUDO_A
+
+# B — Anonymisation & statistiques (et toute modification du schéma)
+/backend/prisma/              @PSEUDO_B
+/backend/src/services/moodService.ts      @PSEUDO_B
+/backend/src/services/teamStatsService.ts @PSEUDO_B
+/backend/src/services/weeklyService.ts    @PSEUDO_B
+/backend/src/services/retentionService.ts @PSEUDO_B
+
+# C — App mobile, parcours employé
+/frontend/src/app/employee.tsx  @PSEUDO_C
+/frontend/src/app/bilan.tsx     @PSEUDO_C
+/frontend/src/app/suivi.tsx     @PSEUDO_C
+/frontend/src/app/demandes/     @PSEUDO_C
+/frontend/src/api/              @PSEUDO_C
+/frontend/src/lib/              @PSEUDO_C
+
+# D — Tableaux de bord manager & direction
+/frontend/src/app/manager.tsx   @PSEUDO_D
+/frontend/src/app/hr.tsx        @PSEUDO_D
+/frontend/src/app/team/         @PSEUDO_D
+/frontend/src/components/TeamDashboard.tsx  @PSEUDO_D
+/frontend/src/components/TeamMoodChart.tsx  @PSEUDO_D
+/frontend/src/theme/            @PSEUDO_D
+
+# E — Infra, données & qualité
+/docker-compose*.yml  @PSEUDO_E
+/backend/Dockerfile   @PSEUDO_E
+/frontend/Dockerfile.web  @PSEUDO_E
+/.github/             @PSEUDO_E
+/ops/                 @PSEUDO_E
+/e2e/                 @PSEUDO_E
+/video/               @PSEUDO_E

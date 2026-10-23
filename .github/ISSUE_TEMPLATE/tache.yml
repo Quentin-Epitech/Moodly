@@ -1,0 +1,39 @@
+name: Tâche
+description: Une tâche d'un périmètre (voir EQUIPE.md)
+labels: []
+body:
+  - type: dropdown
+    id: perimetre
+    attributes:
+      label: Périmètre
+      options:
+        - A — API, auth & sécurité
+        - B — Anonymisation & statistiques
+        - C — App mobile, parcours employé
+        - D — Tableaux de bord manager & direction
+        - E — Infra, données & qualité
+    validations:
+      required: true
+  - type: dropdown
+    id: priorite
+    attributes:
+      label: Priorité
+      options:
+        - P1 — avant la démo
+        - P2 — si le temps le permet
+    validations:
+      required: true
+  - type: textarea
+    id: quoi
+    attributes:
+      label: Ce qu'il faut faire
+    validations:
+      required: true
+  - type: textarea
+    id: termine
+    attributes:
+      label: Terminé quand
+      description: Critères vérifiables (tests, comportement visible, documentation)
+      value: |
+        - [ ] 
+        - [ ] Tests ajoutés et CI verte

@@ -1,0 +1,73 @@
+# Production : HTTPS (Caddy) → app web + relais /api (nginx) → API. Seuls les ports 80/443 sont publiés.
+#
+#   cp backend/.env.production.example backend/.env.production   # puis JWT_SECRET=$(openssl rand -hex 32)
+#   DOMAIN=moodly.mon-entreprise.fr docker compose -f docker-compose.prod.yml up --build -d
+#   docker compose -f docker-compose.prod.yml exec api node dist/cli/users.js import /data/comptes.csv
+#
+# Détails, sauvegardes et checklist : PRODUCTION.md
+
+services:
+  api:
+    build:
+      context: ./backend
+      args:
+        # Postgres / Supabase : PRISMA_SCHEMA=prisma/postgres/schema.prisma (et DATABASE_URL dans .env.production)
+        PRISMA_SCHEMA: ${PRISMA_SCHEMA:-prisma/schema.prisma}
+    env_file:
+      - ./backend/.env.production
+    environment:
+      NODE_ENV: production
+    volumes:
+      - moodly-data:/data
+    restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.web
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Définir DOMAIN (nom de domaine public)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    restart: always
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+volumes:
+  moodly-data:
+  caddy-data:
+  caddy-config:

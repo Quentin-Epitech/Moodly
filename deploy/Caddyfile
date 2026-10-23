@@ -1,0 +1,11 @@
+# Certificat HTTPS automatique (Let's Encrypt) pour $DOMAIN, puis relais vers nginx (app web + /api).
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy web:80
+}
