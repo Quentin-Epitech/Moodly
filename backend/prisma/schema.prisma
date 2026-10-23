@@ -1,0 +1,314 @@
+// =====================================================================
+//  Moodly — schéma de données
+//  Anonymisation "by design"
+// =====================================================================
+//
+//  Le moral d'un salarié est une donnée sensible. Plutôt que de promettre
+//  « on n'affiche pas qui a répondu », on fait en sorte que la base de
+//  données elle-même ne sache pas qui a répondu quoi. L'identité et la
+//  réponse sont stockées dans deux tables sans aucun lien :
+//
+//    Submission (userId, date)          MoodEntry (teamId, date, score, tags)
+//    « Alice a répondu le 12/10 »       « Quelqu'un de l'équipe Produit a mis 2
+//     → sert UNIQUEMENT à bloquer         le 12/10 avec le tag Charge de travail »
+//       la double saisie (UNIQUE)         → AUCUNE colonne userId
+//
+//  Les deux lignes sont écrites dans une même transaction
+//  (services/moodService.ts) : soit les deux existent, soit aucune. Mais rien
+//  ne les relie : pas de clé étrangère, pas d'identifiant commun. MoodEntry.id
+//  est un UUID aléatoire (et non un auto-incrément) et MoodEntry.createdAt est
+//  arrondi au jour, pour qu'on ne puisse pas ré-associer une Submission et une
+//  MoodEntry par leur ordre ou leur instant d'insertion.
+//  Limite connue : SQLite conserve un rowid interne (ordre d'insertion) sur
+//  chaque table ; sur Postgres (cible Supabase) aucun ordre d'insertion n'est
+//  exposé. Pour une mise en production, Postgres est donc la bonne cible.
+//
+//  Conséquences :
+//   - même un admin avec accès direct à la base ne retrouve pas la note
+//     d'une personne ;
+//   - le manager ne reçoit que des agrégats par jour (moyenne, nombre de
+//     réponses, tags les plus fréquents), calculés dans
+//     services/teamStatsService.ts, pour sa propre équipe uniquement
+//     (teamId lu dans le token, jamais dans l'URL) ;
+//   - un jour avec moins de MIN_RESPONSES réponses (3 par défaut) est
+//     masqué (hidden: true, avg: null, topTags: []) pour qu'une petite
+//     équipe ne permette pas de deviner la réponse d'une personne ;
+//   - sur un jour visible, une raison n'est affichée que si elle a été
+//     cochée au moins deux fois (une mention unique désignerait une personne).
+//
+//  Portabilité SQLite -> Postgres (Supabase) : aucune fonctionnalité
+//  spécifique à SQLite, pas d'enum Prisma (User.role est un String validé
+//  par zod côté API), dates de jour en String "YYYY-MM-DD". Pour migrer :
+//  changer `provider` et DATABASE_URL (procédure détaillée dans le README).
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id       Int             @id @default(autoincrement())
+  name     String          @unique
+  users    User[]
+  moods    MoodEntry[]
+  actions  TeamAction[]
+  checkins WeeklyCheckin[]
+  cases    Case[]
+}
+
+model User {
+  id                 Int                @id @default(autoincrement())
+  email              String             @unique
+  passwordHash       String
+  /// "EMPLOYEE" | "MANAGER" | "HR" — String (pas d'enum) pour rester portable, validé par zod
+  role               String
+  teamId             Int
+  /// Incrémenté à la déconnexion ou au changement de mot de passe : invalide les tokens existants
+  tokenVersion       Int                @default(0)
+  /// Compte créé ou réinitialisé avec un mot de passe provisoire
+  mustChangePassword Boolean            @default(false)
+  /// Échecs de connexion consécutifs ; au-delà du seuil, compte verrouillé jusqu'à lockedUntil
+  failedLogins       Int                @default(0)
+  lockedUntil        DateTime?
+  team               Team               @relation(fields: [teamId], references: [id])
+  submissions        Submission[]
+  weeklySubmissions  WeeklySubmission[]
+  /// Demandes déposées (nominatives uniquement : une demande anonyme n'a pas d'auteur)
+  cases              Case[]
+  /// Réponses écrites en tant que manager ou RH
+  caseMessages       CaseMessage[]
+
+  @@index([teamId])
+}
+
+model Tag {
+  id          Int            @id @default(autoincrement())
+  label       String         @unique
+  moodEntries MoodEntryTag[]
+  questions   Question[]
+}
+
+/// Qui a répondu quel jour. Ne contient PAS la réponse.
+/// Son seul rôle : garantir une saisie par personne et par jour. Les lignes des
+/// jours passés ne servent plus à rien : elles sont purgées chaque heure
+/// (services/retentionService.ts), il ne reste jamais d'historique de participation.
+model Submission {
+  id     Int    @id @default(autoincrement())
+  userId Int
+  /// Jour de la saisie, format "YYYY-MM-DD"
+  date   String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+}
+
+/// La réponse. Ne contient PAS l'auteur : seulement l'équipe et le jour.
+model MoodEntry {
+  id        String            @id @default(uuid())
+  teamId    Int
+  /// Jour de la saisie, format "YYYY-MM-DD"
+  date      String
+  /// Note de 1 à 5 (validée par zod côté API)
+  score     Int
+  /// Toujours arrondi au jour par le service (jamais l'instant exact de la saisie)
+  createdAt DateTime          @default(now())
+  team      Team              @relation(fields: [teamId], references: [id])
+  tags      MoodEntryTag[]
+  answers   MoodEntryAnswer[]
+
+  @@index([teamId, date])
+}
+
+model MoodEntryTag {
+  moodEntryId String
+  tagId       Int
+  moodEntry   MoodEntry @relation(fields: [moodEntryId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id])
+
+  @@id([moodEntryId, tagId])
+  @@index([tagId])
+}
+
+/// Questionnaire adaptatif : une question est posée selon la note (minScore/maxScore)
+/// et/ou la raison cochée (tagId). Données de référence, créées par le seed.
+model Question {
+  id       Int               @id @default(autoincrement())
+  key      String            @unique
+  label    String
+  /// "single" (une seule réponse) | "multi" (plusieurs réponses)
+  kind     String
+  tagId    Int?
+  minScore Int?
+  maxScore Int?
+  order    Int
+  tag      Tag?              @relation(fields: [tagId], references: [id])
+  options  QuestionOption[]
+  answers  MoodEntryAnswer[]
+
+  @@index([tagId])
+}
+
+model QuestionOption {
+  id         Int               @id @default(autoincrement())
+  questionId Int
+  label      String
+  order      Int
+  question   Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers    MoodEntryAnswer[]
+
+  @@index([questionId])
+}
+
+/// Réponses détaillées. Rattachées à la MoodEntry anonyme (équipe + jour), jamais
+/// à l'utilisateur. Côté manager elles ne sont jamais montrées par jour : seulement
+/// cumulées sur la période, et uniquement à partir des jours au-dessus du seuil.
+model MoodEntryAnswer {
+  moodEntryId String
+  questionId  Int
+  optionId    Int
+  moodEntry   MoodEntry      @relation(fields: [moodEntryId], references: [id], onDelete: Cascade)
+  question    Question       @relation(fields: [questionId], references: [id])
+  option      QuestionOption @relation(fields: [optionId], references: [id])
+
+  @@id([moodEntryId, optionId])
+  @@index([questionId])
+  @@index([optionId])
+}
+
+/// Action publiée par le manager pour son équipe (« ce qu'on change »), visible
+/// par les employés : ferme la boucle retour → action.
+model TeamAction {
+  id          Int       @id @default(autoincrement())
+  teamId      Int
+  message     String
+  createdAt   DateTime  @default(now())
+  /// Rendez-vous d'équipe facultatif (« point jeudi 14 h ») : début, durée, lieu
+  eventAt     DateTime?
+  durationMin Int?
+  location    String?
+  team        Team      @relation(fields: [teamId], references: [id])
+
+  @@index([teamId, createdAt])
+}
+
+// ---------------------------------------------------------------------
+// Bilan hebdomadaire : même principe que l'humeur du jour
+// ---------------------------------------------------------------------
+
+/// Qui a fait son bilan quelle semaine (une fois par semaine). Ne contient PAS
+/// les réponses ; purgé une fois la semaine passée.
+model WeeklySubmission {
+  id     Int    @id @default(autoincrement())
+  userId Int
+  /// Lundi de la semaine, "YYYY-MM-DD"
+  week   String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, week])
+}
+
+/// Le bilan, sans auteur : équipe + semaine. Pas d'horodatage du tout, pour
+/// qu'aucun instant de saisie ne puisse le rapprocher d'une WeeklySubmission.
+model WeeklyCheckin {
+  id       String @id @default(uuid())
+  teamId   Int
+  /// Lundi de la semaine, "YYYY-MM-DD"
+  week     String
+  /// Comment s'est passée la semaine (1 très difficile → 5 très bien)
+  score    Int
+  /// Charge de travail ressentie (1 très légère → 5 très lourde)
+  workload Int
+  /// Stress ressenti (1 aucun → 5 très élevé)
+  stress   Int
+  team     Team   @relation(fields: [teamId], references: [id])
+
+  @@index([teamId, week])
+}
+
+// ---------------------------------------------------------------------
+// Demandes & signalements : NOMINATIFS par défaut, entièrement séparés des
+// humeurs et des bilans (aucune relation avec MoodEntry ni WeeklyCheckin).
+// Routage : demande d'action et problème avec un collègue → manager de
+// l'équipe ; problème avec le manager → RH ; prise de contact → au choix.
+// ---------------------------------------------------------------------
+
+model Case {
+  id              Int           @id @default(autoincrement())
+  /// "ACTION_REQUEST" | "COLLEAGUE_ISSUE" | "MANAGER_ISSUE" | "CONTACT" (validé par zod)
+  type            String
+  category        String
+  subject         String
+  /// Qui traite la demande : "MANAGER" (managers de l'équipe) | "HR"
+  recipient       String
+  /// "OPEN" | "IN_PROGRESS" | "RESOLVED"
+  status          String        @default("OPEN")
+  teamId          Int
+  anonymous       Boolean       @default(false)
+  /// Demandeur ; toujours null pour une demande anonyme (ou si le compte a été supprimé)
+  authorId        Int?
+  /// Empreinte SHA-256 du code de suivi d'une demande anonyme (le code n'est jamais stocké)
+  accessTokenHash String?       @unique
+  /// Dernière lecture côté demandeur / côté traitement (pastilles « non lu »)
+  requesterReadAt DateTime?
+  handlerReadAt   DateTime?
+  lastMessageAt   DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  resolvedAt      DateTime?
+  team            Team          @relation(fields: [teamId], references: [id])
+  author          User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  messages        CaseMessage[]
+  meetings        CaseMeeting[]
+
+  @@index([teamId, recipient, status])
+  @@index([recipient, status])
+  @@index([authorId])
+}
+
+model CaseMessage {
+  id        Int          @id @default(autoincrement())
+  caseId    Int
+  /// "REQUESTER" | "HANDLER"
+  sender    String
+  /// Auteur côté traitement (manager / RH) ; jamais renseigné pour le demandeur
+  handlerId Int?
+  /// "TEXT" | "MEETING_PROPOSED" | "MEETING_ACCEPTED" | "MEETING_DECLINED" | "MEETING_CANCELLED"
+  kind      String       @default("TEXT")
+  /// Rendez-vous concerné, pour les messages MEETING_*
+  meetingId Int?
+  body      String
+  createdAt DateTime     @default(now())
+  case      Case         @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  handler   User?        @relation(fields: [handlerId], references: [id], onDelete: SetNull)
+  meeting   CaseMeeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, createdAt])
+  @@index([handlerId])
+  @@index([meetingId])
+}
+
+/// Rendez-vous proposé dans une demande NOMINATIVE (jamais dans une demande anonyme :
+/// se rencontrer révélerait l'identité du demandeur).
+model CaseMeeting {
+  id          Int           @id @default(autoincrement())
+  caseId      Int
+  /// Qui propose : "REQUESTER" | "HANDLER" ; l'autre côté accepte ou refuse
+  proposedBy  String
+  startsAt    DateTime
+  durationMin Int
+  /// « Visio », « Bureau RH »… (texte court)
+  location    String
+  /// "PROPOSED" | "ACCEPTED" | "DECLINED" | "CANCELLED"
+  status      String        @default("PROPOSED")
+  createdAt   DateTime      @default(now())
+  respondedAt DateTime?
+  case        Case          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  messages    CaseMessage[]
+
+  @@index([caseId])
+  @@index([status, startsAt])
+}
